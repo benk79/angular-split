@@ -1,6 +1,6 @@
 {
     "name": "angular-split-ng6",
-    "version": "1.0.0-rc.3",
+    "version": "1.0.0-rc.5",
     "description": "Copy of angular-split but with aszechlicki fix, and some other errors patched for angular 6.",
     "main": "./bundles/angular-split-ng6.umd.js",
     "module": "./esm5/angular-split-ng6.js",
