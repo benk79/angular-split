@@ -72,7 +72,7 @@ export class SplitAreaDirective implements OnInit, OnDestroy {
 
     ////
 
-    private transitionListener: Function;
+    private transitionListener: any = null;
     private readonly lockListeners: Array<Function> = [];
 
     constructor(private ngZone: NgZone,

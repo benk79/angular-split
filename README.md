@@ -7,5 +7,4 @@ Documentation and examples:
 [https://bertrandg.github.io/angular-split/](https://bertrandg.github.io/angular-split/)
 
 **Warning:**
-Versions `angular-split@1.x` needs `@angular/*@5.x`.
-Documentation for [versions 0.2.x](https://bertrandg.github.io/angular-split/old_0.2.x/)
+This is a fix for compatibility with Angular 6. This fork is not maintained and is only a temp fix while angular-split isn't updated.

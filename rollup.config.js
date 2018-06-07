@@ -5,9 +5,8 @@ import sourcemaps from 'rollup-plugin-sourcemaps';
 const globals = {
     '@angular/core': 'ng.core',
     '@angular/common': 'ng.common',
-    'rxjs/Observable': 'Rx',
-    'rxjs/Subject': 'Rx',
-    'rxjs/add/operator/debounceTime': 'Rx.Observable.prototype'
+    'rxjs': 'rxjs',
+    'rxjs/operators': 'rxjs.operators'
 };
 
 export default {

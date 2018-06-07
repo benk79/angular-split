@@ -1,12 +1,10 @@
 import { Component, ChangeDetectorRef, Input, Output, HostBinding, ChangeDetectionStrategy, 
     EventEmitter, Renderer2, OnDestroy, ElementRef, AfterViewInit, NgZone } from '@angular/core';
-import { Subject } from 'rxjs/Subject';
-import { Observable } from 'rxjs/Observable';
-import 'rxjs/add/operator/debounceTime';
-
+import { Subject, Observable } from 'rxjs';
 import { IArea } from './../interface/IArea';
 import { IPoint } from './../interface/IPoint';
 import { SplitAreaDirective } from './splitArea.directive';
+import { debounceTime } from 'rxjs/operators';
 
 /**
  * angular-split
@@ -242,7 +240,7 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
     @Output() gutterClick = new EventEmitter<{gutterNum: number, sizes: Array<number>}>(false);
 
     private transitionEndInternal = new Subject<Array<number>>();
-    @Output() transitionEnd = (<Observable<Array<number>>> this.transitionEndInternal.asObservable()).debounceTime(20);
+    @Output() transitionEnd = (<Observable<Array<number>>> this.transitionEndInternal.asObservable()).pipe(debounceTime(20));
 
     @HostBinding('style.flex-direction') get cssFlexdirection() {
         return (this.direction === 'horizontal') ? 'row' : 'column';
@@ -265,13 +263,12 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
     }
 
     public isViewInitialized: boolean = false;
+    public readonly displayedAreas: Array<IArea> = [];
+    
     private isDragging: boolean = false;
     private draggingWithoutMove: boolean = false;
     private currentGutterNum: number = 0;
-
-    public readonly displayedAreas: Array<IArea> = [];
     private readonly hidedAreas: Array<IArea> = [];
-    
     private readonly dragListeners: Array<Function> = [];
     private readonly dragStartValues = {
         sizePixelContainer: 0,
@@ -290,8 +287,103 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
         this.isViewInitialized = true;
     }
 
-    private getNbGutters(): number {
-        return this.displayedAreas.length - 1;
+    public startDragging(startEvent: MouseEvent | TouchEvent, gutterOrder: number, gutterNum: number): void {
+        startEvent.preventDefault();
+
+        // Place code here to allow '(gutterClick)' event even if '[disabled]="true"'.
+        this.currentGutterNum = gutterNum;
+        this.draggingWithoutMove = true;
+        this.ngZone.runOutsideAngular(() => {
+            this.dragListeners.push( 
+                this.renderer.listen('document', 'mouseup', (e: MouseEvent) => this.stopDragging()) 
+            );
+            this.dragListeners.push( 
+                this.renderer.listen('document', 'touchend', (e: TouchEvent) => this.stopDragging()) 
+            );
+            this.dragListeners.push( 
+                this.renderer.listen('document', 'touchcancel', (e: TouchEvent) => this.stopDragging()) 
+            );
+        });
+
+        if(this.disabled) {
+            return;
+        }
+
+        const areaA = this.displayedAreas.find(a => a.order === gutterOrder - 1);
+        const areaB = this.displayedAreas.find(a => a.order === gutterOrder + 1);
+        
+        if(!areaA || !areaB) {
+            return;
+        }
+
+        const prop = (this.direction === 'horizontal') ? 'offsetWidth' : 'offsetHeight';
+        this.dragStartValues.sizePixelContainer = this.elRef.nativeElement[prop];
+        this.dragStartValues.sizePixelA = areaA.comp.getSizePixel(prop);
+        this.dragStartValues.sizePixelB = areaB.comp.getSizePixel(prop);
+        this.dragStartValues.sizePercentA = areaA.size;
+        this.dragStartValues.sizePercentB = areaB.size;
+
+        let start: IPoint;
+        if(startEvent instanceof MouseEvent) {
+            start = {
+                x: startEvent.screenX,
+                y: startEvent.screenY,
+            };
+        }
+        else if(startEvent instanceof TouchEvent) {
+            start = {
+                x: startEvent.touches[0].screenX,
+                y: startEvent.touches[0].screenY,
+            };
+        }
+        else {
+            return;
+        }
+
+        this.ngZone.runOutsideAngular(() => {
+            this.dragListeners.push(
+                this.renderer.listen(
+                    'document', 'mousemove', (e: MouseEvent) => this.dragEvent(e, start, areaA, areaB)
+                ) 
+            );
+            this.dragListeners.push( 
+                this.renderer.listen(
+                    'document', 'touchmove', (e: TouchEvent) => this.dragEvent(e, start, areaA, areaB)
+                ) 
+            );
+        });
+
+        areaA.comp.lockEvents();
+        areaB.comp.lockEvents();
+
+        this.isDragging = true;
+
+        this.notify('start');
+    }
+
+    public notify(type: 'start' | 'progress' | 'end' | 'click' | 'transitionEnd'): void {
+        const areasSize: Array<number> = this.displayedAreas.map(a => a.size * 100);
+
+        switch(type) {
+            case 'start':
+                return this.dragStart.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
+
+            case 'progress':
+                return this.dragProgress.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
+
+            case 'end':
+                return this.dragEnd.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
+                
+            case 'click':
+                return this.gutterClick.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
+
+            case 'transitionEnd':
+                return this.transitionEndInternal.next(areasSize);
+        }
+    }
+
+    public ngOnDestroy(): void {
+        this.stopDragging();
     }
 
     public addArea(comp: SplitAreaDirective): void {
@@ -363,6 +455,10 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
 
             this.build(true, true);
         }
+    }
+
+    private getNbGutters(): number {
+        return this.displayedAreas.length - 1;
     }
 
     private build(resetOrders: boolean, resetSizes: boolean): void {
@@ -458,66 +554,6 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
         this.displayedAreas.forEach(area => {
             area.comp.setStyleFlexbasis(`calc( ${ area.size * 100 }% - ${ area.size * sumGutterSize }px )`, this.isDragging);
         });
-    }
-
-    public startDragging(startEvent: MouseEvent | TouchEvent, gutterOrder: number, gutterNum: number): void {
-        startEvent.preventDefault();
-
-        // Place code here to allow '(gutterClick)' event even if '[disabled]="true"'.
-        this.currentGutterNum = gutterNum;
-        this.draggingWithoutMove = true;
-        this.ngZone.runOutsideAngular(() => {
-            this.dragListeners.push( this.renderer.listen('document', 'mouseup', (e: MouseEvent) => this.stopDragging()) );
-            this.dragListeners.push( this.renderer.listen('document', 'touchend', (e: TouchEvent) => this.stopDragging()) );
-            this.dragListeners.push( this.renderer.listen('document', 'touchcancel', (e: TouchEvent) => this.stopDragging()) );
-        });
-
-        if(this.disabled) {
-            return;
-        }
-
-        const areaA = this.displayedAreas.find(a => a.order === gutterOrder - 1);
-        const areaB = this.displayedAreas.find(a => a.order === gutterOrder + 1);
-        
-        if(!areaA || !areaB) {
-            return;
-        }
-
-        const prop = (this.direction === 'horizontal') ? 'offsetWidth' : 'offsetHeight';
-        this.dragStartValues.sizePixelContainer = this.elRef.nativeElement[prop];
-        this.dragStartValues.sizePixelA = areaA.comp.getSizePixel(prop);
-        this.dragStartValues.sizePixelB = areaB.comp.getSizePixel(prop);
-        this.dragStartValues.sizePercentA = areaA.size;
-        this.dragStartValues.sizePercentB = areaB.size;
-
-        let start: IPoint;
-        if(startEvent instanceof MouseEvent) {
-            start = {
-                x: startEvent.screenX,
-                y: startEvent.screenY,
-            };
-        }
-        else if(startEvent instanceof TouchEvent) {
-            start = {
-                x: startEvent.touches[0].screenX,
-                y: startEvent.touches[0].screenY,
-            };
-        }
-        else {
-            return;
-        }
-
-        this.ngZone.runOutsideAngular(() => {
-            this.dragListeners.push( this.renderer.listen('document', 'mousemove', (e: MouseEvent) => this.dragEvent(e, start, areaA, areaB)) );
-            this.dragListeners.push( this.renderer.listen('document', 'touchmove', (e: TouchEvent) => this.dragEvent(e, start, areaA, areaB)) );
-        });
-
-        areaA.comp.lockEvents();
-        areaB.comp.lockEvents();
-
-        this.isDragging = true;
-
-        this.notify('start');
     }
 
     private dragEvent(event: MouseEvent | TouchEvent, start: IPoint, areaA: IArea, areaB: IArea): void {
@@ -629,31 +665,5 @@ export class SplitComponent implements AfterViewInit, OnDestroy {
 
         this.isDragging = false;
         this.draggingWithoutMove = false;
-    }
-
-
-    public notify(type: 'start' | 'progress' | 'end' | 'click' | 'transitionEnd'): void {
-        const areasSize: Array<number> = this.displayedAreas.map(a => a.size * 100);
-
-        switch(type) {
-            case 'start':
-                return this.dragStart.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
-
-            case 'progress':
-                return this.dragProgress.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
-
-            case 'end':
-                return this.dragEnd.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
-                
-            case 'click':
-                return this.gutterClick.emit({gutterNum: this.currentGutterNum, sizes: areasSize});
-
-            case 'transitionEnd':
-                return this.transitionEndInternal.next(areasSize);
-        }
-    }
-
-    public ngOnDestroy(): void {
-        this.stopDragging();
     }
 }

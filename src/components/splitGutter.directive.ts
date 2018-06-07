@@ -11,7 +11,7 @@ export class SplitGutterDirective {
     
     ////
 
-    private _direction: 'vertical' | 'horizontal';
+    private _direction: 'vertical' | 'horizontal' = 'vertical';
     
     @Input() set direction(v: 'vertical' | 'horizontal') {
         this._direction = v;
@@ -35,7 +35,7 @@ export class SplitGutterDirective {
     
     ////
 
-    private _size: number;
+    private _size: number = 0;
     
     @Input() set size(v: number) {
         this._size = v;
@@ -48,7 +48,7 @@ export class SplitGutterDirective {
     
     ////
 
-    private _color: string;
+    private _color: string = '';
 
     @Input() set color(v: string) {
         this._color = v;
@@ -61,7 +61,7 @@ export class SplitGutterDirective {
     
     ////
 
-    private _imageH: string;
+    private _imageH: string = '';
 
     @Input() set imageH(v: string) {
         this._imageH = v;
@@ -74,7 +74,7 @@ export class SplitGutterDirective {
     
     ////
 
-    private _imageV: string;
+    private _imageV: string = '';
 
     @Input() set imageV(v: string) {
         this._imageV = v;
